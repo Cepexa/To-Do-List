@@ -3,6 +3,7 @@
 #include <curses.h>
 #include <windows.h>
 #include <list>
+#include <vector>
 #include <signal.h>
 #include <functional>
 class Edit
@@ -10,12 +11,11 @@ class Edit
 public:
     Edit(int x, int y, int width, int height);
     ~Edit();
+    inline bool contains(int px, int py) const {
+        return px >= x && px <= x + width && py >= y && py <= y + height;
+    }
     void Prepare() {
-        input_window = newwin(height, width, y, x);
-        // Создание рамки
-        box(input_window, 0, 0);
-        // Перемещение курсора в начало окна
-        wmove(input_window, 1, 1);
+        //input_window = newwin(height, width, y, x);
     }
     bool ListenMouse(int ch) {
         if (ch == KEY_MOUSE) {
@@ -29,55 +29,108 @@ public:
     void Show() {
         // Проверка наведения курсора на "кнопку"
         int ch;
+        int i = y;
+        for (const auto& t : vtext)
+        {
+            ++i;
+            int j = x;
+            for (const auto& cht : t)
+            {
+                wmove(stdscr, i, ++j);
+                waddch(stdscr, cht);
+            }
+        }
+        // Создание рамки
+        for (size_t i = x; i < x+width; i++)
+        {
+            mvprintw( y,     i, "%s", "_");
+            mvprintw( y+height,i, "%s", "_");
+        }
+        for (size_t i = y+1; i <= y+height; i++)
+        {
+            mvprintw(i,x,      "%ls", "|");
+            mvprintw(i,width,  "%ls", "|");
+        }
         if (isCur) {
+            // Перемещение курсора в начало окна
+            wmove(stdscr, (vtext.empty() ?1:vtext.size()) + y, (vtext.empty()?0:vtext.back().size())+ x + 1);
             curs_set(1); // показать курсор
-            do { ch = wgetch(input_window); 
-    
-            if (ch == 8 /*KEY_BACKSPACE */ ) {
-                if (text.empty()) {
+            do { ch = wgetch(stdscr);
+            if(ch == KEY_MOUSE) {
+                MEVENT event;
+                nc_getmouse(&event);
+                if (!contains(event.x, event.y))
+                {
+                    ch = '\n';
+                }
+            }
+            if (ch == -1 || ch == '\n'|| ch == KEY_MOUSE) {
+            
+            }
+            else if (ch == 8 /*KEY_BACKSPACE */ ) {
+                if (!vtext.empty()) {
+                    // Перемещение курсора на позицию последнего символа (или на предыдущую строку, если символ был переходом на новую строку)
+                    int cursor_x = x+vtext.back().size();
+                    if (vtext.back().empty()) {
+                        vtext.pop_back();
+                        if (vtext.empty()) {
+                            wmove(stdscr, y + 1, x + 1);
+                            continue;
+                        }
+                        cursor_x = x + (vtext.empty() ? 0 : vtext.back().size());
+                    }
+                    // Удаление последнего символа
+                    vtext.back().erase(vtext.back().end() - 1);
+                    wmove(stdscr, (vtext.empty() ? 1:vtext.size()) + y, cursor_x);
+                    waddch(stdscr, ' ');
+                    wmove(stdscr, (vtext.empty() ? 1:vtext.size()) + y, cursor_x);
                 }
                 else {
+                    wmove(stdscr, y+1, x+1);
+                }
+            }
+            else {
+                bool flag = false;
+                if (vtext.empty()|| (vtext.back().size() >= width - x-2)) {
+                    if (vtext.size() < height-1) {
+                        if (!vtext.empty())
+                        {
+                            flag = true;
+                            vtext.back().push_back(ch);
 
-                // Удаление последнего символа
-                text.erase(text.end() - 1);
+                        }
+                        vtext.push_back(std::wstring(L""));
+                    }
                 }
-                // Перемещение курсора на позицию последнего символа (или на предыдущую строку, если символ был переходом на новую строку)
-                int cursor_x = text.length() + 1;
-                if (text.length() == 0) {
-                     //Если строка пустая, переходим в начало первой строки
-                    cursor_x = 1;
-                    wmove(input_window, 1, cursor_x);
-                    waddch(input_window, ' ');
-                    //Перемещаем курсор обратно
-                    wmove(input_window, 1, cursor_x);
+                if (vtext.size() >= height-1 && vtext.back().size() >= width - x -2) {                    
+                    int cursor_x = x + vtext.back().size() + 1;
+                    int cursor_y = y + vtext.size();
+                    wmove(stdscr, cursor_y, cursor_x);
+                    waddch(stdscr, ' ');
+                    wmove(stdscr, cursor_y, cursor_x);
+                    continue;
                 }
-                else {
-                    // Вставляем пробел, чтобы очистить символ
-                    wmove(input_window, 1, cursor_x);
-                    waddch(input_window, ' ');
-                    //Перемещаем курсор обратно
-                    wmove(input_window, 1, cursor_x);
+                else if(flag){
+                    int cursor_x = x + vtext.back().size()+1;
+                    int cursor_y = y + vtext.size();
+                    wmove(stdscr, cursor_y, cursor_x);
+                }
+                else
+                {
+                    vtext.back().push_back(ch);
                 }
             }
-            else if (ch != 8) {
-                text += static_cast<char>(ch);
-                //waddch(input_window, ch);
-            }
-            wrefresh(input_window);
+            wrefresh(stdscr);
             } 
             while (ch != '\n');
             isCur = false;
-        }
-        else {
-
         }
 
     }
 
 private:
     int x, y, width, height;
-    WINDOW* input_window;
-    std::string text;
+    std::vector<std::wstring> vtext;
     bool isCur{ false };
 };
 Edit::Edit(int x, int y, int width, int height)
@@ -87,7 +140,6 @@ Edit::Edit(int x, int y, int width, int height)
 }
 Edit::~Edit()
 {
-    delwin(input_window);
 }
 
 class Button
@@ -95,14 +147,16 @@ class Button
 public:
     Button(int x,int y, int width, int height,const char* text);
     ~Button();
+    inline bool contains(int px, int py) const {
+        return px >= x && px <= x + width && py >= y && py <= y + height;
+    }
     void Prepare() {
         // Инициализация ncurses
-    //noecho(); // Скрыть ввод символов
-    // cbreak(); // Ввод символов без нажатия Enter
+        //noecho(); // Скрыть ввод символов
+        // cbreak(); // Ввод символов без нажатия Enter
         start_color(); // Включение поддержки цвета
-
         // Определение цветов
-        init_pair(1, COLOR_GREEN, COLOR_BLUE); // Цвет "кнопки"
+        init_pair(1, COLOR_RED, COLOR_BLUE); // Цвет "кнопки"
         init_pair(2, COLOR_BLUE, COLOR_RED); // Цвет "кнопки" при наведении
 
         // Вывод "кнопки"
@@ -116,27 +170,18 @@ public:
     void Show() {
         // Проверка наведения курсора на "кнопку"
         curs_set(0); // Скрыть курсор
-        if (current == this) {
-            // Выделить "кнопку"
-            attron(COLOR_PAIR(2));
-            for (int i = 0; i < height; i++) {
-                for (int j = 0; j < width; j++) {
-                    mvaddch(y + i, x + j, ' ');
-                }
-            }
-            attroff(COLOR_PAIR(2));
-            func();
+        if (currentId == this->id) {
+            onClick();
         }
-        else {
-            // Вернуть "кнопке" обычный цвет
-            attron(COLOR_PAIR(1));
-            for (int i = 0; i < height; i++) {
-                for (int j = 0; j < width; j++) {
-                    mvaddch(y + i, x + j, ' ');
-                }
+        // Выделить "кнопку"
+        attron(COLOR_PAIR((currentId == this->id)?2:1));
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                mvaddch(y + i, x + j, ' ');
             }
-            attroff(COLOR_PAIR(1));
         }
+        attroff(COLOR_PAIR((currentId == this->id) ? 2 : 1));
+
         // Очищаем область кнопки
         mvhline(y, x, ' ', width);
         mvhline(y + height - 1, x, ' ', width);
@@ -147,17 +192,18 @@ public:
         // Выравнивание текста по центру
         int text_len = strlen(text);
         int text_x = x + (width - text_len) / 2;
+        attron(COLOR_PAIR((currentId == this->id) ? 2 : 1));
         mvprintw(y + (height / 2), text_x, "%s", text);
+        attroff(COLOR_PAIR((currentId == this->id) ? 2 : 1));
     }
-    void ListenMouse(int ch, std::function<void()>func) {
+    void ListenMouse(int ch, std::function<void()>onClick) {
         if (ch == KEY_MOUSE) {
             MEVENT event;
             nc_getmouse(&event);
-            if (event.x >= x && event.x <= x + width &&
-                event.y >= y && event.y <= y + height)
+            if (contains(event.x, event.y))
             { 
-                current = this;
-                this->func = func;
+                currentId = this->id;
+                this->onClick = onClick;
             //switch (event.bstate) {
             //case BUTTON1_PRESSED:
             //    std::cout << "ЛКМ зажал на координате (" << event.x << "," << event.y << ") " << event.bstate << "\n";
@@ -194,12 +240,17 @@ public:
 private:
     int x, y, width, height;
     const char* text;
-    static Button* current;
-    std::function<void()> func;
+    int id;
+    static int currentId;
+    static int nextId;
+    std::function<void()> onClick;
 };
+int Button::nextId = 1;
+int Button::currentId = 0;
 Button::Button(int x, int y, int width, int height, const char* text)
     :text(text),
      x(x),y(y), width(width), height(height){
+    id = nextId++;
     Prepare();
 }
 Button::~Button()
@@ -233,7 +284,9 @@ void setMinSizeWindow() {
 }
 #endif
 
-int main() {
+int main2() {
+    //setlocale(LC_ALL, "ru_RU.UTF-8");
+    system("chcp 1251 > nul");
     initscr();
     mousemask(ALL_MOUSE_EVENTS, NULL);
     //noecho(); 
@@ -244,7 +297,8 @@ int main() {
     data.push_back("Hello world! Привет мир");
     Button btn1(1, 1, 30, 5,"label1");
     Button btn2(31, 1, 30, 5,"label2");    
-    Edit edit(1, 12, 20, 5);    
+    Button btn3(61, 1, 30, 5,"label3");    
+    Edit edit(1, 12, 90, 5);    
             int initial_y, initial_x;
             getmaxyx(stdscr, initial_y, initial_x);
     while (true) {
@@ -272,8 +326,8 @@ int main() {
             curs_set(0);
             btn1.Show();
             btn2.Show();
+            btn3.Show();
             edit.Show();
-
         }
         else {
             clear();
@@ -281,12 +335,14 @@ int main() {
                 // Выводим информацию из списка
                 int i = 11;
                 for (const auto& item : data) {
-                    wchar_t wstr[100];
+                    wchar_t *wstr = new wchar_t[item.size()];
                     mbstowcs(wstr, item.c_str(), item.size());
                     mvprintw(i, 0, "%ls", wstr);
                     i++;
+                    delete[] wstr;
                 }});
             btn2.ListenMouse(ch, []() {});
+            btn3.ListenMouse(ch, []() {});
             edit.ListenMouse(ch);
         }   
         refresh();

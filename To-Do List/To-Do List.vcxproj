@@ -159,6 +159,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Example1.cpp" />
+    <ClCompile Include="Example2.cpp" />
     <ClCompile Include="Main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -166,6 +168,9 @@
   </ItemGroup>
   <ItemGroup>
     <Library Include="pdcurses.lib" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Example1.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

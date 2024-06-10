@@ -82,7 +82,7 @@ public:
     }
 };
 
-int main() {
+int main11() {
     system("chcp 1251 > nul");
     TaskList taskList;
     long long (*pmax)() = std::numeric_limits<std::streamsize>::max;

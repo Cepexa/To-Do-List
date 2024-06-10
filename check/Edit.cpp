@@ -1,78 +1,86 @@
-#include <curses.h>
+#include <iostream>
 #include <string>
+#include <curses.h>
 
-int main4() {
-    initscr();
-    noecho();
-    cbreak();
-    mousemask(ALL_MOUSE_EVENTS, NULL);
-    keypad(stdscr, TRUE);
+class Blank
+{
+public:
+    Blank(int x, int y, int width, int height);
+    ~Blank();
 
-    // Размеры окна ввода
-    int window_width = 40;
-    int window_height = 10;
+private:
+    WINDOW* win;
+    int x, y, width, height;
+};
 
-    // Координаты левого верхнего угла окна
-    int window_x = (COLS - window_width) / 2;
-    int window_y = (LINES - window_height) / 2;
+Blank::Blank(int x, int y, int width, int height)
+    : x(x), y(y), width(width), height(height)
+{
+    win = newwin(x, y, width, height);
+}
 
-    // Создание окна ввода
-    WINDOW* input_window = newwin(window_height, window_width, window_y, window_x);
+Blank::~Blank()
+{
+    delwin(win);
+} 
 
-    // Создание рамки
-    box(input_window, 0, 0);
+int main() {
+    initscr(); // Инициализация экрана curses
+    noecho();  // Отключение отображения вводимых символов
 
-    // Перемещение курсора в начало окна
-    wmove(input_window, 1, 1);
+    // Определение размеров экрана
+    int maxy, maxx;
+    getmaxyx(stdscr, maxy, maxx);
 
-    // Ввод текста
-    int ch;
-    std::string text;
-    bool editing = false;
-    while (true) {
-        ch = getch();
+    // Определение размеров окна
+    int height = 10;
+    int width = 30;
+    int starty = (maxy - height) / 2; // Положение верхнего левого угла окна
+    int startx = (maxx - width) / 2;  // Положение верхнего левого угла окна
 
-        // Проверка нажатия на область ввода
-        if (ch == KEY_MOUSE) {
-            MEVENT event;
-            nc_getmouse(&event);
-            if (event.y >= window_y && event.y < window_y + window_height &&
-                event.x >= window_x && event.x < window_x + window_width) {
-                editing = true;
-                wmove(input_window, event.y - window_y, event.x - window_x);
-            }
-            else {
-                editing = false;
-            }
-        }
-
-        if (editing) {
-            // Редактирование текста внутри рамки
-            if (ch == KEY_BACKSPACE && !text.empty()) {
-                text.erase(text.end() - 1);
-                wmove(input_window, 1, text.length() + 1);
-                waddch(input_window, ' ');
-                wmove(input_window, 1, text.length() + 1);
-            }
-            else if (isprint(ch)) {
-                text += static_cast<char>(ch);
-                waddch(input_window, ch);
-            }
-            else if (ch == '\n') {
-                editing = false;
-            }
-
-            wrefresh(input_window);
-        }
-    }
-
-    // Вывод введенного текста
-    mvprintw(LINES - 2, 0, "Введенный текст: %s", text.c_str());
+    // Создание фонового окна
+    WINDOW* background = newpad(maxy, maxx);
+    init_pair(1, COLOR_BLUE, COLOR_BLUE);
+    init_pair(2, COLOR_MAGENTA, COLOR_MAGENTA);
+    wbkgd(background, COLOR_PAIR(1)); // Установка фонового цвета
     refresh();
 
-    getch();
-    delwin(input_window);
-    endwin();
+    // Отрисовка областей на фоновом окне
+    box(background, 0, 0);
+    mvwprintw(background, 1, 1, "Enter text (Window 1):");
+    mvwprintw(background, 2, 1, "Enter text (Window 2):");
+    prefresh(background, 0, 0, 0, 0, maxy - 1, maxx - 1);
 
+    // Создание окна для первой области ввода
+    WINDOW* win1 = subwin(background, height - 2, width - 2, starty + 1, startx + 1);
+
+    // Получение ввода в первой области
+    char input1[20];
+    echo();
+    mvwgetnstr(win1, 0, 0, input1, 20);
+
+    // Отображение введенного текста в первой области
+    mvwprintw(background, starty + 3, startx + 1, "You entered (Window 1): %s", input1);
+
+    // Создание окна для второй области ввода
+    WINDOW* win2 = subwin(background, height - 2, width - 2, starty + height + 1, startx + 1);
+
+    // Получение ввода во второй области
+    char input2[20];
+    mvwgetnstr(win2, 0, 0, input2, 20);
+
+    // Отображение введенного текста во второй области
+    mvwprintw(background, starty + height + 3, startx + 1, "You entered (Window 2): %s", input2);
+
+    // Обновление фонового окна
+    prefresh(background, 0, 0, 0, 0, maxy - 1, maxx - 1);
+
+    // Ожидание нажатия любой клавиши перед закрытием
+    getch();
+
+    // Очистка памяти и выход
+    delwin(win1);
+    delwin(win2);
+    endwin();
     return 0;
 }
